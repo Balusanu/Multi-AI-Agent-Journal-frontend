@@ -1,127 +1,127 @@
 import streamlit as st
 import requests
 import json
-import time
 
-# ==============================
+# =========================
 # CONFIG
-# ==============================
+# =========================
 
 BACKEND_URL = "https://multi-agent-ai-journal.onrender.com/generate"
+HEALTH_URL = "https://multi-agent-ai-journal.onrender.com/"
 
 st.set_page_config(
-    page_title="AI Academic Journal Generator",
+    page_title="Academic Journal Generator",
     page_icon="📚",
     layout="wide"
 )
 
-# ==============================
-# HEADER
-# ==============================
-
 st.title("📚 Multi-Agent Academic Journal Generator")
-st.markdown(
-    "Generate structured academic journals using **Agentic AI + LangGraph**"
-)
+st.caption("Agentic AI + LangGraph Academic Research System")
 
-# ==============================
-# BACKEND HEALTH CHECK
-# ==============================
+# =========================
+# SESSION STATE
+# =========================
 
-def check_backend():
+if "running" not in st.session_state:
+    st.session_state.running = False
+
+if "journal" not in st.session_state:
+    st.session_state.journal = ""
+
+# =========================
+# BACKEND STATUS
+# =========================
+
+def backend_alive():
     try:
-        r = requests.get(
-            "https://multi-agent-ai-journal.onrender.com/",
-            timeout=10
-        )
-        if r.status_code == 200:
-            return True
+        r = requests.get(HEALTH_URL, timeout=5)
+        return r.status_code == 200
     except:
         return False
 
 
-if check_backend():
-    st.success("🟢 Backend Connected")
+if backend_alive():
+    st.success("🟢 Backend Online")
 else:
-    st.warning("🟡 Backend waking up (Render cold start)...")
+    st.warning("🟡 Backend waking up (Render cold start...)")
 
-# ==============================
+# =========================
 # INPUT
-# ==============================
+# =========================
 
 topic = st.text_input(
     "Enter Academic Topic",
-    placeholder="Example: Impact of Generative AI in Higher Education"
+    placeholder="Example: Impact of Generative AI in Education"
 )
 
-generate_btn = st.button("🚀 Generate Journal")
+generate = st.button(
+    "🚀 Generate Journal",
+    disabled=st.session_state.running
+)
 
-# ==============================
-# STREAMING FUNCTION
-# ==============================
+status_box = st.empty()
+output_box = st.empty()
 
-def stream_journal(topic):
+# =========================
+# STREAM EXECUTION
+# =========================
+
+def generate_journal(topic):
+
+    st.session_state.running = True
+    st.session_state.journal = ""
+
     try:
         response = requests.post(
             BACKEND_URL,
             json={"topic": topic},
             stream=True,
-            timeout=300  # important for Render
+            timeout=600
         )
-
-        status_placeholder = st.empty()
-        journal_placeholder = st.empty()
-
-        final_journal = ""
 
         for line in response.iter_lines():
 
-            if line:
-                decoded = line.decode("utf-8")
+            if not line:
+                continue
 
-                try:
-                    data = json.loads(decoded)
+            try:
+                data = json.loads(line.decode())
 
-                    # Agent status updates
-                    if "status" in data:
-                        status_placeholder.info(data["status"])
+                if "status" in data:
+                    status_box.info(data["status"])
 
-                    # Final journal output
-                    if "journal" in data:
-                        final_journal = data["journal"]
-                        journal_placeholder.markdown(final_journal)
+                if "journal" in data:
+                    st.session_state.journal = data["journal"]
+                    output_box.markdown(
+                        st.session_state.journal
+                    )
 
-                except json.JSONDecodeError:
-                    continue
-
-        return final_journal
+            except:
+                pass
 
     except Exception as e:
-        st.error(f"❌ Error: {str(e)}")
-        return None
+        status_box.error(f"Error: {e}")
+
+    st.session_state.running = False
 
 
-# ==============================
-# GENERATE
-# ==============================
+# =========================
+# RUN
+# =========================
 
-if generate_btn and topic:
+if generate and topic:
+    generate_journal(topic)
 
-    with st.spinner("Multi-agent system generating journal..."):
-        journal_text = stream_journal(topic)
-
-    if journal_text:
-        st.success("✅ Journal Generated Successfully")
-
-        # ==============================
-        # DOWNLOAD OPTION
-        # ==============================
-        st.download_button(
-            label="📄 Download Journal",
-            data=journal_text,
-            file_name="academic_journal.txt",
-            mime="text/plain"
-        )
-
-elif generate_btn:
+elif generate:
     st.warning("Please enter a topic.")
+
+# =========================
+# DOWNLOAD
+# =========================
+
+if st.session_state.journal:
+    st.download_button(
+        "📄 Download Journal",
+        st.session_state.journal,
+        file_name="academic_journal.txt"
+    )
