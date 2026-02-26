@@ -2,12 +2,12 @@ import streamlit as st
 import requests
 import json
 
-# =========================
+# ==============================
 # CONFIG
-# =========================
+# ==============================
 
-BACKEND_URL = "https://multi-agent-ai-journal.onrender.com/generate"
-HEALTH_URL = "https://multi-agent-ai-journal.onrender.com/"
+API_URL = "https://multi-agent-ai-journal.onrender.com/generate-journal-stream"
+HEALTH_URL = "https://multi-agent-ai-journal.onrender.com"
 
 st.set_page_config(
     page_title="Academic Journal Generator",
@@ -18,110 +18,96 @@ st.set_page_config(
 st.title("📚 Multi-Agent Academic Journal Generator")
 st.caption("Agentic AI + LangGraph Academic Research System")
 
-# =========================
-# SESSION STATE
-# =========================
-
-if "running" not in st.session_state:
-    st.session_state.running = False
-
-if "journal" not in st.session_state:
-    st.session_state.journal = ""
-
-# =========================
+# ==============================
 # BACKEND STATUS
-# =========================
+# ==============================
 
-def backend_alive():
+def backend_status():
     try:
-        r = requests.get(HEALTH_URL, timeout=5)
-        return r.status_code == 200
+        requests.get(HEALTH_URL, timeout=5)
+        return True
     except:
         return False
 
 
-if backend_alive():
+if backend_status():
     st.success("🟢 Backend Online")
 else:
     st.warning("🟡 Backend waking up (Render cold start...)")
 
-# =========================
+# ==============================
 # INPUT
-# =========================
+# ==============================
 
 topic = st.text_input(
     "Enter Academic Topic",
-    placeholder="Example: Impact of Generative AI in Education"
+    placeholder="Example: Ozone Layer Recovery"
 )
 
-generate = st.button(
-    "🚀 Generate Journal",
-    disabled=st.session_state.running
-)
+generate = st.button("🚀 Generate Journal")
 
 status_box = st.empty()
-output_box = st.empty()
+journal_box = st.empty()
 
-# =========================
-# STREAM EXECUTION
-# =========================
+# ==============================
+# STREAM HANDLER
+# ==============================
 
-def generate_journal(topic):
-
-    st.session_state.running = True
-    st.session_state.journal = ""
+def stream_journal(topic):
 
     try:
         response = requests.post(
-            BACKEND_URL,
+            API_URL,
             json={"topic": topic},
             stream=True,
             timeout=600
         )
+
+        journal_text = ""
 
         for line in response.iter_lines():
 
             if not line:
                 continue
 
-            try:
-                data = json.loads(line.decode())
+            decoded = line.decode("utf-8")
 
+            try:
+                data = json.loads(decoded)
+
+                # STATUS UPDATE
                 if "status" in data:
                     status_box.info(data["status"])
 
+                # FINAL JOURNAL
                 if "journal" in data:
-                    st.session_state.journal = data["journal"]
-                    output_box.markdown(
-                        st.session_state.journal
-                    )
+                    journal_text = data["journal"]
+                    journal_box.markdown(journal_text)
 
-            except:
+            except Exception:
                 pass
 
+        return journal_text
+
     except Exception as e:
-        status_box.error(f"Error: {e}")
+        st.error(f"Connection error: {e}")
+        return None
 
-    st.session_state.running = False
 
+# ==============================
+# EXECUTION
+# ==============================
 
-# =========================
-# RUN
-# =========================
+if generate:
 
-if generate and topic:
-    generate_journal(topic)
+    if not topic:
+        st.warning("Please enter a topic")
+    else:
+        journal = stream_journal(topic)
 
-elif generate:
-    st.warning("Please enter a topic.")
-
-# =========================
-# DOWNLOAD
-# =========================
-
-if st.session_state.journal:
-    st.download_button(
-        "📄 Download Journal",
-        st.session_state.journal,
-        file_name="academic_journal.txt"
-    )
+        if journal:
+            st.download_button(
+                "📄 Download Journal",
+                journal,
+                file_name="academic_journal.txt"
+            )
